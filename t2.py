@@ -5,49 +5,43 @@ import time
 NUM_ALUMNOS = 5
 NUM_SILLAS = 3
 TTEMPO_ESPERA = 0.3
+PREGUNTAS = 5
 buffer = []
 
 mut_buffer = Semaphore(1)
+señal = Semaphore(1)
 despertar = Semaphore(0)
-
+impreSem = Semaphore(1)
 multiplexAlu =Semaphore(NUM_SILLAS)
 
 def alumno(id):
-    numPreg = random.randint(1,5)
-    while numPreg > 0:
-        
-        time.sleep(TTEMPO_ESPERA)
-        print('El alumno %d ha entrado al cubículo y tiene %d preguntas' %(id,numPreg))
+    numPreg = random.randint(1,PREGUNTAS)
+    var = 1
+    while var <= numPreg:
+        with impreSem:
+            print('El alumno %d ha entrado al cubículo y tiene %d preguntas' %(id,numPreg))
+        señal.acquire()
 
         with mut_buffer:
-            buffer.append([id,numPreg])
+            buffer.append([id,var])
         despertar.release()
-        numPreg -= 1
-    print('\t\tSaliendo alumno %d \n' %id)
+        var += 1
+        time.sleep(TTEMPO_ESPERA)
+
+    with impreSem:
+        print('\t\t\tSaliendo alumno %d \n' %id)
 
 def profesor():
     while True:
-        print('Entrando al profe')
-         #Despertando al profe
+        #Despertando al profe
+        print('\tProfe despierto')
         despertar.acquire()
 
-
-        #Sección crítica para obtener preguntas
-        mut_buffer.acquire()
-        if len(buffer) == 0:
-            print('\t\tNo hay preguntas en la cola, me voy a dormi')
-            mut_buffer.release()
-            continue
-        #Extrayendo al alumno con su id y el numero de pregunta
-        infoPreg = buffer.pop(0)
-        contPreg=infoPreg[1]
-        mut_buffer.release()
-
-        while contPreg > 0:
-            mut_buffer.acquire()
+        with mut_buffer:
+            infoPreg = buffer.pop(0)
+            contPreg=infoPreg[1]
             print('Respondiendo la pregunta %d del alumno %d ' % (contPreg, infoPreg[0]))
-            contPreg-=1
-            mut_buffer.release()
+        señal.release()
 
 #Por medio de un multiplex generamos la restricción de solo NUM_SILLAS dentro del cúbiculo 
 def llamada(id,multiplexAlu):
@@ -59,3 +53,4 @@ Thread(target=profesor,args=[]).start()
 
 for i in range(NUM_ALUMNOS):
     Thread(target=llamada,args=[i,multiplexAlu]).start()
+
